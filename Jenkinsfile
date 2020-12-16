@@ -1,35 +1,31 @@
-node {
-    def server = Artifactory.server 'roja-deb-test'
-    def rtMaven = Artifactory.newMavenBuild()
-    def buildInfo
+pipeline {
+    agent any
 
-    stage ('Clone') {
-        git url: 'https://github.com/roja03/calenderExam.git'
-    }
-    stage ('Artifactory configuration') {
-        server = Artifactory.server 'roja-deb-test'
-        rtMaven.tool = 'maven' // Tool name from Jenkins configuration
-        rtMaven.deployer releaseRepo: 'libs-release-local', snapshotRepo: 'libs-snapshot-local', server: server
-        rtMaven.resolver releaseRepo: 'libs-release', snapshotRepo: 'libs-snapshot', server: server
-        buildInfo = Artifactory.newBuildInfo()
+    environment {
+        // The URL of the artifact in Artifactory, that caused the job to be triggered.
+        // May be empty if the build isn't triggered by a change in Artifactory.
+        RT_TRIGGER_URL = "${currentBuild.getBuildCauses('org.jfrog.hudson.trigger.ArtifactoryCause')[0]?.url}"
     }
 
-    stage ('Exec Maven') {
-        rtMaven.run pom: 'pom.xml', goals: 'clean install', buildInfo: buildInfo
-    }
+    stages {
+        stage('Artifactory configuration') {
+            steps {
+                rtServer(
+                        id: "roja-deb-test",
+                        url: http://localhost:8081/,
+                        credentialsId: CREDENTIALS
+                )
+            }
+        }
 
-    stage ('Publish build info') {
-        server.publishBuildInfo buildInfo
+        stage('Add build trigger') {
+            steps {
+                rtBuildTrigger(
+                        serverId: "ARTIFACTORY_SERVER",
+                        spec: "*/10 * * * *",
+                        paths: "generic-libs-local/builds/starship"
+                )
+            }
+        }
     }
-
-    stage ('Xray scan') {
-        def scanConfig = [
-                'buildName'      : buildInfo.name,
-                'buildNumber'    : buildInfo.number,
-                'failBuild'      : true
-        ]
-        def scanResult = server.xrayScan scanConfig
-        echo scanResult as String
-    }
-
 }
